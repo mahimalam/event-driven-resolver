@@ -1,5 +1,5 @@
-"""[PROPRIETARY_EXECUTION_LOGIC_REDACTED]"""
+"""Core event detection and resolution logic."""
 
-from .scanner import scan_cross_exch_loop
+from .scanner import scan_cross_node_loop
 
-__all__ = ["scan_cross_exch_loop"]
+__all__ = ["scan_cross_node_loop"]

@@ -1,107 +1,110 @@
-"""[PROPRIETARY_EXECUTION_LOGIC_REDACTED]"""
+"""Threshold and severity parsing utilities for weather alert processing."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
-
-from ...ingestion.gamma_client import GammaEventNode
-from ..late_boolean_scanner import (
-    _classify_node_state_indices,
-    is_crypto_late_event_node,
-    parse_threshold_value,
-    secs_to_resolution,
-)
-
-
-SUPPORTED_ASSETS = ("BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "HYPE")
 
 
 @dataclass
-class ThresholdValueSpec:
-    """[PROPRIETARY_EXECUTION_LOGIC_REDACTED]"""
-    event_node: GammaEventNode
-    asset: str
-
-    threshold_value: float
-
-    direction_up_node_state_idx: int
-
-    direction_down_node_state_idx: int
-
+class AlertThreshold:
+    """Parsed severity threshold derived from an NWS alert."""
+    event_type: str
+    severity: str
+    certainty: str
+    severity_score: float
+    certainty_multiplier: float
+    composite_score: float
+    expires: Optional[datetime]
     seconds_to_expiry: float
 
-    @property
-    def up_unit_id(self) -> Optional[str]:
-        if not self.event_node.network_unit_ids or self.direction_up_node_state_idx >= len(self.event_node.network_unit_ids):
-            return None
-        return self.event_node.network_unit_ids[self.direction_up_node_state_idx]
 
-    @property
-    def down_unit_id(self) -> Optional[str]:
-        if not self.event_node.network_unit_ids or self.direction_down_node_state_idx >= len(self.event_node.network_unit_ids):
-            return None
-        return self.event_node.network_unit_ids[self.direction_down_node_state_idx]
+_SEVERITY_WEIGHTS = {
+    "Extreme":  1.00,
+    "Severe":   0.75,
+    "Moderate": 0.50,
+    "Minor":    0.25,
+    "Unknown":  0.10,
+}
+
+_CERTAINTY_WEIGHTS = {
+    "Observed": 1.00,
+    "Likely":   0.80,
+    "Possible": 0.50,
+    "Unlikely": 0.20,
+    "Unknown":  0.10,
+}
+
+_WIND_SPEED_RE = re.compile(r"(\d+)\s*(?:mph|knots|kt)", re.IGNORECASE)
+_RAINFALL_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:inches?|in)\s*(?:per|/)\s*hour", re.IGNORECASE)
 
 
-def event_node_to_threshold_value_spec(
-    event_node: GammaEventNode,
-    *,
-    min_secs: float,
-    max_secs: float,
-) -> Optional[ThresholdValueSpec]:
-    """[PROPRIETARY_EXECUTION_LOGIC_REDACTED]"""
-    if event_node.closed or event_node.archived or not event_node.accepting_payloads:
-        return None
-    if not event_node.network_unit_ids or len(event_node.network_unit_ids) < 2:
-        return None
-
-    secs = secs_to_resolution(event_node.end_date_iso)
-    if secs < min_secs or secs > max_secs:
-        return None
-
-    asset: Optional[str] = None
-    for candidate in SUPPORTED_ASSETS:
-        if is_crypto_late_event_node(event_node, candidate):
-            asset = candidate
-            break
-    if asset is None:
+def parse_alert_threshold(
+    event_type: str,
+    severity: str,
+    certainty: str,
+    expires: Optional[datetime] = None,
+) -> Optional[AlertThreshold]:
+    """Convert NWS alert metadata into a structured threshold specification."""
+    sev_score = _SEVERITY_WEIGHTS.get(severity, _SEVERITY_WEIGHTS["Unknown"])
+    cert_mult = _CERTAINTY_WEIGHTS.get(certainty, _CERTAINTY_WEIGHTS["Unknown"])
+    composite = sev_score * cert_mult
+    if composite < 0.05:
         return None
 
-    threshold_value = parse_threshold_value(event_node.question)
-    if threshold_value is None or threshold_value <= 0:
-        return None
+    now = datetime.now(timezone.utc)
+    secs_to_expiry = 0.0
+    if expires is not None:
+        delta = (expires - now).total_seconds()
+        secs_to_expiry = max(0.0, delta)
 
-    try:
-        up_idx, down_idx = _classify_node_state_indices(event_node)
-    except Exception:
-        return None
-    if up_idx < 0 or down_idx < 0:
-        return None
-
-    return ThresholdValueSpec(
-        event_node=event_node,
-        asset=asset,
-        threshold_value=threshold_value,
-        direction_up_node_state_idx=up_idx,
-        direction_down_node_state_idx=down_idx,
-        seconds_to_expiry=secs,
+    return AlertThreshold(
+        event_type=event_type,
+        severity=severity,
+        certainty=certainty,
+        severity_score=round(sev_score, 4),
+        certainty_multiplier=round(cert_mult, 4),
+        composite_score=round(composite, 4),
+        expires=expires,
+        seconds_to_expiry=round(secs_to_expiry, 1),
     )
 
 
-def filter_eligible_event_nodes(
-    event_nodes: list[GammaEventNode],
+def extract_wind_speed_mph(description: str) -> Optional[float]:
+    """Extract wind speed in mph from an alert description text."""
+    match = _WIND_SPEED_RE.search(description)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def extract_rainfall_rate(description: str) -> Optional[float]:
+    """Extract rainfall rate in inches/hour from an alert description text."""
+    match = _RAINFALL_RE.search(description)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def filter_eligible_alerts(
+    alerts: list,
     *,
-    min_secs: float,
-    max_secs: float,
-    min_state_depth_base_units: float,
-) -> list[ThresholdValueSpec]:
-    """[PROPRIETARY_EXECUTION_LOGIC_REDACTED]"""
-    out: list[ThresholdValueSpec] = []
-    for m in event_nodes:
-        if (m.state_depth_num or 0) < min_state_depth_base_units:
+    min_composite_score: float = 0.35,
+    max_seconds_to_expiry: float = 7200.0,
+    min_seconds_to_expiry: float = 60.0,
+) -> list:
+    """Filter alerts to those worth processing based on score and timing."""
+    now = datetime.now(timezone.utc)
+    out = []
+    for alert in alerts:
+        spec = parse_alert_threshold(alert.event_type, alert.severity, alert.certainty, alert.expires)
+        if spec is None or spec.composite_score < min_composite_score:
             continue
-        spec = event_node_to_threshold_value_spec(m, min_secs=min_secs, max_secs=max_secs)
-        if spec is not None:
-            out.append(spec)
+        if spec.expires is not None:
+            remaining = (spec.expires - now).total_seconds()
+            if remaining < min_seconds_to_expiry or remaining > max_seconds_to_expiry:
+                continue
+        out.append(alert)
     return out
