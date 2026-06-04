@@ -2,7 +2,7 @@
   <h1>Event-Driven Resolver</h1>
   <p><b>Ultra-Low Latency Cross-Node Execution Engine</b></p>
   
-  [![CI](https://github.com/mahimalam/event-driven-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/mahimalam/event-driven-resolver/actions/workflows/ci.yml)
+  [![CI](https://github.com/mahimalam/weather-alert-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/mahimalam/weather-alert-resolver/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
   [![Latency](https://img.shields.io/badge/Latency-<50ms-red?style=for-the-badge)](#)
   [![Architecture](https://img.shields.io/badge/Architecture-Event_Driven-orange?style=for-the-badge)](#)
