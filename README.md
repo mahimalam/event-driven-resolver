@@ -2,6 +2,7 @@
   <h1>Event-Driven Resolver</h1>
   <p><b>Ultra-Low Latency Cross-Node Execution Engine</b></p>
   
+  [![CI](https://github.com/mahimalam/event-driven-resolver/actions/workflows/ci.yml/badge.svg)](https://github.com/mahimalam/event-driven-resolver/actions/workflows/ci.yml)
   [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
   [![Latency](https://img.shields.io/badge/Latency-<50ms-red?style=for-the-badge)](#)
   [![Architecture](https://img.shields.io/badge/Architecture-Event_Driven-orange?style=for-the-badge)](#)
@@ -81,12 +82,3 @@ pip install -r requirements.txt
 python main.py --profile low_latency --max-rtt 150
 ```
 
----
-
-### 🔐 Security & Intellectual Property Notice
-*This repository serves as a professional portfolio demonstration of ultra-low latency architecture and event-driven computing.*
-
-To protect proprietary data feeds and high-frequency algorithms:
-- Actual execution thresholds and `[PROPRIETARY_EXECUTION_LOGIC_REDACTED]` have been stripped.
-- Sensitive authentication payloads, API keys, and EVM integration details have been scrubbed.
-- All structural contexts referring to financial markets or specific consensus platforms have been abstracted to comply with regulatory requirements.
